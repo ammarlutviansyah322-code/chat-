@@ -1,0 +1,953 @@
+<!DOCTYPE html><html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Chat Random Number</title>
+  <style>
+    :root {
+      --bg: #0b141a;
+      --panel: #111b21;
+      --panel-2: #1f2c34;
+      --panel-3: #2a3942;
+      --accent: #25d366;
+      --accent-2: #00a884;
+      --text: #e9edef;
+      --muted: #8696a0;
+      --danger: #ff6b6b;
+      --border: rgba(255,255,255,.08);
+      --bubble-me: #005c4b;
+      --bubble-them: #202c33;
+      --shadow: 0 12px 40px rgba(0,0,0,.35);
+      --radius: 18px;
+    }* { box-sizing: border-box; }
+html, body { height: 100%; }
+body {
+  margin: 0;
+  font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  background: radial-gradient(circle at top, rgba(37,211,102,.12), transparent 24%), var(--bg);
+  color: var(--text);
+  overflow: hidden;
+}
+
+button, input, select {
+  font: inherit;
+}
+
+.app {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: 64px 1fr;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(17,27,33,.92);
+  backdrop-filter: blur(10px);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-weight: 800;
+  letter-spacing: .3px;
+}
+
+.logo {
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
+  background: linear-gradient(135deg, var(--accent), #1fa86e);
+  display: grid;
+  place-items: center;
+  color: #07120c;
+  font-weight: 900;
+  box-shadow: 0 8px 24px rgba(37,211,102,.28);
+}
+
+.top-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.pill {
+  padding: 8px 12px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid var(--border);
+}
+
+.main {
+  display: grid;
+  grid-template-columns: 360px 1fr;
+  min-height: 0;
+}
+
+.sidebar {
+  border-right: 1px solid var(--border);
+  background: rgba(17,27,33,.82);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.section {
+  padding: 16px;
+  border-bottom: 1px solid var(--border);
+}
+
+.section h3 {
+  margin: 0 0 10px;
+  font-size: 15px;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.card {
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.form {
+  display: grid;
+  gap: 10px;
+}
+
+.input, .select {
+  width: 100%;
+  border: 1px solid var(--border);
+  background: rgba(0,0,0,.18);
+  color: var(--text);
+  border-radius: 14px;
+  padding: 12px 14px;
+  outline: none;
+}
+
+.input::placeholder { color: #6f7e87; }
+.input:focus, .select:focus {
+  border-color: rgba(37,211,102,.55);
+  box-shadow: 0 0 0 3px rgba(37,211,102,.12);
+}
+
+.btn {
+  border: 0;
+  cursor: pointer;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-weight: 700;
+  color: #05130c;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 10px 22px rgba(37,211,102,.20);
+  transition: transform .15s ease, opacity .15s ease;
+}
+
+.btn:hover { transform: translateY(-1px); }
+.btn:active { transform: translateY(0); opacity: .92; }
+
+.btn.secondary {
+  background: rgba(255,255,255,.08);
+  color: var(--text);
+  box-shadow: none;
+  border: 1px solid var(--border);
+}
+
+.btn.danger {
+  background: rgba(255,107,107,.14);
+  color: #ffd9d9;
+  border: 1px solid rgba(255,107,107,.2);
+  box-shadow: none;
+}
+
+.otp-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 10px;
+}
+
+.contacts {
+  padding: 10px;
+  overflow: auto;
+  min-height: 0;
+}
+
+.contact {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px;
+  border-radius: 16px;
+  cursor: pointer;
+  border: 1px solid transparent;
+  margin-bottom: 8px;
+  background: rgba(255,255,255,.03);
+  transition: background .15s ease, border-color .15s ease;
+}
+
+.contact:hover {
+  background: rgba(255,255,255,.06);
+}
+
+.contact.active {
+  border-color: rgba(37,211,102,.4);
+  background: rgba(37,211,102,.08);
+}
+
+.avatar {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, rgba(37,211,102,.92), rgba(0,168,132,.75));
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  color: #06130c;
+  flex: 0 0 auto;
+}
+
+.contact-meta {
+  min-width: 0;
+  flex: 1;
+}
+
+.contact-meta .name {
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.contact-meta .num {
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 3px;
+}
+
+.chat {
+  display: grid;
+  grid-template-rows: auto 1fr auto;
+  min-width: 0;
+  min-height: 0;
+  background:
+    radial-gradient(circle at top left, rgba(37,211,102,.08), transparent 28%),
+    linear-gradient(180deg, rgba(17,27,33,.95), rgba(11,20,26,.95));
+}
+
+.chat-header {
+  padding: 16px 18px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  background: rgba(17,27,33,.8);
+}
+
+.chat-title {
+  min-width: 0;
+}
+
+.chat-title h2 {
+  margin: 0;
+  font-size: 18px;
+}
+
+.chat-title p {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.chat-body {
+  padding: 20px;
+  overflow: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.empty {
+  margin: auto;
+  max-width: 430px;
+  text-align: center;
+  color: var(--muted);
+  line-height: 1.6;
+  padding: 24px;
+}
+
+.bubble {
+  max-width: min(78%, 680px);
+  padding: 12px 14px;
+  border-radius: 18px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+}
+
+.bubble.me {
+  align-self: flex-end;
+  background: var(--bubble-me);
+  border-bottom-right-radius: 6px;
+}
+
+.bubble.them {
+  align-self: flex-start;
+  background: var(--bubble-them);
+  border-bottom-left-radius: 6px;
+}
+
+.bubble small {
+  display: block;
+  margin-top: 6px;
+  color: rgba(233,237,239,.68);
+  font-size: 11px;
+}
+
+.composer {
+  padding: 16px;
+  border-top: 1px solid var(--border);
+  background: rgba(17,27,33,.86);
+}
+
+.composer-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  align-items: end;
+}
+
+.composer textarea {
+  resize: none;
+  min-height: 52px;
+  max-height: 160px;
+}
+
+.codebox {
+  border: 1px dashed rgba(37,211,102,.35);
+  background: rgba(37,211,102,.06);
+  border-radius: 16px;
+  padding: 12px;
+  font-size: 13px;
+  color: #d2f7e2;
+  line-height: 1.5;
+}
+
+.hidden { display: none !important; }
+
+.badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(255,255,255,.08);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.otp-panel {
+  display: grid;
+  gap: 10px;
+}
+
+.mini-list {
+  display: grid;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.mini-item {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255,255,255,.04);
+  border: 1px solid var(--border);
+  font-size: 13px;
+}
+
+@media (max-width: 920px) {
+  body { overflow: auto; }
+  .app { height: auto; min-height: 100vh; }
+  .main { grid-template-columns: 1fr; }
+  .sidebar { border-right: 0; border-bottom: 1px solid var(--border); }
+  .chat { min-height: 70vh; }
+}
+
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="brand">
+        <div class="logo">C</div>
+        <div>
+          <div>Chat Random Number</div>
+          <div class="muted" style="font-size:12px">Prototype chat + nomor unik</div>
+        </div>
+      </div>
+      <div class="top-actions">
+        <span id="sessionBadge" class="pill">Belum login</span>
+        <button id="resetBtn" class="btn secondary" style="padding:9px 12px">Reset demo</button>
+      </div>
+    </div><div class="main">
+  <aside class="sidebar">
+    <div class="section">
+      <h3>Daftar akun</h3>
+      <div id="registerBox" class="form">
+        <input id="emailInput" class="input" type="email" placeholder="email@example.com" />
+        <div class="otp-row">
+          <input id="otpInput" class="input" type="text" placeholder="Kode OTP" maxlength="6" />
+          <button id="sendOtpBtn" class="btn secondary">Kirim OTP</button>
+        </div>
+        <input id="nameInput" class="input hidden" type="text" placeholder="Nama kamu" />
+        <button id="finishRegisterBtn" class="btn hidden">Buat akun</button>
+      </div>
+
+      <div id="profileBox" class="codebox hidden" style="margin-top:12px"></div>
+    </div>
+
+    <div class="section">
+      <h3>Tambah kontak</h3>
+      <div class="form">
+        <input id="addContactInput" class="input" type="text" placeholder="Masukkan nomor random, contoh 8179917" />
+        <button id="addContactBtn" class="btn secondary">Tambah ke daftar</button>
+      </div>
+    </div>
+
+    <div class="section" style="padding-bottom: 10px; border-bottom: 0;">
+      <h3>Kontak</h3>
+      <div class="muted">Nomor tersimpan lokal dulu. Nanti bisa dihubungkan ke database / backend beneran.</div>
+    </div>
+    <div id="contactsList" class="contacts"></div>
+  </aside>
+
+  <section class="chat">
+    <div class="chat-header">
+      <div class="chat-title">
+        <h2 id="chatTitle">Pilih kontak dulu</h2>
+        <p id="chatSubtitle">Belum ada percakapan yang dibuka.</p>
+      </div>
+      <div class="badge" id="meBadge">Guest</div>
+    </div>
+
+    <div id="chatBody" class="chat-body">
+      <div class="empty card">
+        <h3 style="margin:0 0 8px">Buat akun dulu, lalu tambah nomor orang</h3>
+        <div>
+          Alurnya:
+          email → OTP → isi nama → dapat nomor random → tambah nomor teman → chat.
+        </div>
+      </div>
+    </div>
+
+    <div class="composer">
+      <div class="composer-row">
+        <textarea id="messageInput" class="input" placeholder="Tulis pesan..." disabled></textarea>
+        <button id="sendBtn" class="btn" disabled>Kirim</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+  </div>  
+<script src="/socket.io/socket.io.js"></script>
+<script>
+  (() => {
+    const STORAGE_TOKEN = 'crn_token_v3';
+    const state = {
+      token: localStorage.getItem(STORAGE_TOKEN) || '',
+      me: null,
+      contacts: [],
+      chats: {},
+      selectedNumber: null,
+      socket: null,
+      sending: false,
+    };
+
+    const el = {
+      sessionBadge: document.getElementById('sessionBadge'),
+      resetBtn: document.getElementById('resetBtn'),
+      emailInput: document.getElementById('emailInput'),
+      otpInput: document.getElementById('otpInput'),
+      sendOtpBtn: document.getElementById('sendOtpBtn'),
+      nameInput: document.getElementById('nameInput'),
+      finishRegisterBtn: document.getElementById('finishRegisterBtn'),
+      registerBox: document.getElementById('registerBox'),
+      profileBox: document.getElementById('profileBox'),
+      addContactInput: document.getElementById('addContactInput'),
+      addContactBtn: document.getElementById('addContactBtn'),
+      contactsList: document.getElementById('contactsList'),
+      chatTitle: document.getElementById('chatTitle'),
+      chatSubtitle: document.getElementById('chatSubtitle'),
+      chatBody: document.getElementById('chatBody'),
+      messageInput: document.getElementById('messageInput'),
+      sendBtn: document.getElementById('sendBtn'),
+      meBadge: document.getElementById('meBadge'),
+    };
+
+    bootstrap();
+
+    function bootstrap() {
+      wireEvents();
+      if (state.token) {
+        hydrateSession().then(renderAll).catch(() => {
+          clearSession();
+          renderAll();
+        });
+      } else {
+        renderAll();
+      }
+    }
+
+    function wireEvents() {
+      el.sendOtpBtn.addEventListener('click', requestOtp);
+      el.finishRegisterBtn.addEventListener('click', verifyOtpAndRegister);
+      el.addContactBtn.addEventListener('click', addContact);
+      el.sendBtn.addEventListener('click', sendMessage);
+      el.resetBtn.addEventListener('click', logout);
+
+      el.messageInput.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' && !e.shiftKey) {
+          e.preventDefault();
+          sendMessage();
+        }
+      });
+
+      el.otpInput.addEventListener('input', () => {
+        el.otpInput.value = el.otpInput.value.replace(/\D/g, '').slice(0, 6);
+      });
+    }
+
+    async function hydrateSession() {
+      state.me = await api('/api/me');
+      await loadContacts();
+      connectSocket();
+    }
+
+    function connectSocket() {
+      if (!state.token) return;
+      if (state.socket) {
+        try { state.socket.disconnect(); } catch {}
+      }
+
+      state.socket = io({
+        auth: { token: state.token },
+        transports: ['websocket', 'polling'],
+      });
+
+      state.socket.on('connect', () => {
+        // no-op
+      });
+
+      state.socket.on('message:new', ({ message }) => {
+        if (!message || !state.me) return;
+        const otherNumber = message.senderNumber === state.me.number ? message.receiverNumber : message.senderNumber;
+        ensureContactFromMessage(otherNumber, message.senderNumber === state.me.number ? message.receiverName : message.senderName);
+        appendMessage(otherNumber, message, { dedupe: true });
+        touchContact(otherNumber, message.body, message.senderNumber === state.me.number ? message.receiverName : message.senderName);
+        renderContacts();
+        if (state.selectedNumber === otherNumber) renderChat();
+      });
+    }
+
+    async function requestOtp() {
+      const email = el.emailInput.value.trim().toLowerCase();
+      if (!email || !email.includes('@')) {
+        alert('Isi email yang valid dulu.');
+        return;
+      }
+
+      try {
+        const data = await api('/api/auth/request-otp', {
+          method: 'POST',
+          body: { email },
+        });
+
+        el.nameInput.classList.remove('hidden');
+        el.finishRegisterBtn.classList.remove('hidden');
+        if (data.demoCode) {
+          el.otpInput.value = data.demoCode;
+          alert(`OTP demo: ${data.demoCode}`);
+        } else {
+          alert('OTP sudah dikirim ke email kamu.');
+        }
+      } catch (err) {
+        alert(err.message || 'Gagal kirim OTP.');
+      }
+    }
+
+    async function verifyOtpAndRegister() {
+      const email = el.emailInput.value.trim().toLowerCase();
+      const otp = el.otpInput.value.trim();
+      const name = el.nameInput.value.trim();
+
+      if (!email || !otp || !name) {
+        alert('Email, OTP, dan nama harus diisi.');
+        return;
+      }
+
+      try {
+        const data = await api('/api/auth/verify-otp', {
+          method: 'POST',
+          body: { email, otp, name },
+        });
+
+        state.token = data.token;
+        state.me = data.user;
+        localStorage.setItem(STORAGE_TOKEN, data.token);
+        await loadContacts();
+        connectSocket();
+        renderAll();
+        alert(`Akun berhasil dibuat. Nomor kamu: ${state.me.number}`);
+      } catch (err) {
+        alert(err.message || 'OTP gagal diverifikasi.');
+      }
+    }
+
+    async function loadContacts() {
+      const data = await api('/api/contacts');
+      state.contacts = data.contacts || [];
+      if (!state.selectedNumber && state.contacts.length) {
+        state.selectedNumber = state.contacts[0].number;
+      }
+      renderContacts();
+      if (state.selectedNumber) await openChat(state.selectedNumber);
+    }
+
+    async function addContact() {
+      if (!state.me) {
+        alert('Daftar dulu.');
+        return;
+      }
+
+      const number = el.addContactInput.value.trim();
+      if (!number) {
+        alert('Masukkan nomor kontak.');
+        return;
+      }
+
+      try {
+        const data = await api('/api/contacts/add', {
+          method: 'POST',
+          body: { number },
+        });
+
+        el.addContactInput.value = '';
+        upsertContactLocally(data.contact);
+        if (!state.selectedNumber) state.selectedNumber = data.contact.number;
+        renderAll();
+      } catch (err) {
+        alert(err.message || 'Gagal tambah kontak.');
+      }
+    }
+
+    async function openChat(number) {
+      state.selectedNumber = number;
+      if (!state.me) return;
+
+      if (!state.chats[number]) {
+        const data = await api(`/api/chats/${encodeURIComponent(number)}`);
+        state.chats[number] = data.messages || [];
+      }
+      renderAll();
+      scrollChatBottom();
+    }
+
+    async function sendMessage() {
+      const text = el.messageInput.value.trim();
+      const number = state.selectedNumber;
+
+      if (!state.me || !number || !text || state.sending) return;
+
+      state.sending = true;
+      el.sendBtn.disabled = true;
+
+      try {
+        const data = await api('/api/chats/send', {
+          method: 'POST',
+          body: { toNumber: number, message: text },
+        });
+
+        el.messageInput.value = '';
+        appendMessage(number, data.message, { dedupe: true });
+        touchContact(number, text);
+        renderContacts();
+        renderChat();
+        scrollChatBottom();
+      } catch (err) {
+        alert(err.message || 'Gagal kirim pesan.');
+      } finally {
+        state.sending = false;
+        renderComposerState();
+      }
+    }
+
+    function logout() {
+      localStorage.removeItem(STORAGE_TOKEN);
+      try { state.socket && state.socket.disconnect(); } catch {}
+      clearSession();
+      renderAll();
+    }
+
+    function clearSession() {
+      state.token = '';
+      state.me = null;
+      state.contacts = [];
+      state.chats = {};
+      state.selectedNumber = null;
+      state.socket = null;
+    }
+
+    async function api(url, options = {}) {
+      const headers = {
+        'Content-Type': 'application/json',
+        ...(options.headers || {}),
+      };
+      if (state.token) headers.Authorization = `Bearer ${state.token}`;
+
+      const response = await fetch(url, {
+        method: options.method || 'GET',
+        headers,
+        body: options.body ? JSON.stringify(options.body) : undefined,
+      });
+
+      const payload = await response.json().catch(() => ({}));
+      if (!response.ok) {
+        throw new Error(payload.error || 'Request gagal.');
+      }
+      return payload;
+    }
+
+    function renderAll() {
+      renderHeader();
+      renderProfile();
+      renderContacts();
+      renderChat();
+      renderComposerState();
+    }
+
+    function renderHeader() {
+      if (state.me) {
+        el.sessionBadge.textContent = `${state.me.name} • ${state.me.number}`;
+        el.meBadge.textContent = state.me.number;
+      } else {
+        el.sessionBadge.textContent = 'Belum login';
+        el.meBadge.textContent = 'Guest';
+      }
+    }
+
+    function renderProfile() {
+      if (!state.me) {
+        el.registerBox.classList.remove('hidden');
+        el.profileBox.classList.add('hidden');
+        el.nameInput.classList.add('hidden');
+        el.finishRegisterBtn.classList.add('hidden');
+        return;
+      }
+
+      el.registerBox.classList.add('hidden');
+      el.profileBox.classList.remove('hidden');
+      el.profileBox.innerHTML = `
+        <strong>Akun aktif</strong><br/>
+        Nama: ${escapeHtml(state.me.name)}<br/>
+        Email: ${escapeHtml(state.me.email)}<br/>
+        Nomor: <strong>${escapeHtml(state.me.number)}</strong><br/>
+        <span style="color:#9ddfb9">Tersimpan di database + sinkron ke real-time socket.</span>
+      `;
+    }
+
+    function renderContacts() {
+      if (!state.me) {
+        el.contactsList.innerHTML = `
+          <div class="empty" style="margin:0; padding:20px 14px">
+            Kontak akan muncul setelah akun dibuat.
+          </div>
+        `;
+        return;
+      }
+
+      if (!state.contacts.length) {
+        el.contactsList.innerHTML = `
+          <div class="empty" style="margin:0; padding:20px 14px">
+            Belum ada kontak. Tambah nomor random di atas dulu.
+          </div>
+        `;
+        return;
+      }
+
+      el.contactsList.innerHTML = state.contacts.map(c => `
+        <div class="contact ${c.number === state.selectedNumber ? 'active' : ''}" data-number="${escapeAttr(c.number)}">
+          <div class="avatar">${escapeHtml(initials(c.name))}</div>
+          <div class="contact-meta">
+            <div class="name">${escapeHtml(c.name)}</div>
+            <div class="num">${escapeHtml(c.number)}${c.lastMessage ? ' • ' + escapeHtml(c.lastMessage) : ''}</div>
+          </div>
+          <div style="color:var(--muted); font-size:12px">›</div>
+        </div>
+      `).join('');
+
+      el.contactsList.querySelectorAll('.contact').forEach(node => {
+        node.addEventListener('click', () => openChat(node.dataset.number));
+      });
+    }
+
+    function renderChat() {
+      const selected = currentContact();
+      if (!selected) {
+        el.chatTitle.textContent = state.me ? 'Pilih kontak dulu' : 'Belum login';
+        el.chatSubtitle.textContent = state.me ? 'Tambah nomor, lalu klik salah satu kontak.' : 'Daftar akun untuk mulai chat.';
+        el.chatBody.innerHTML = `
+          <div class="empty card">
+            <h3 style="margin:0 0 8px">${state.me ? 'Pilih kontak untuk mulai ngobrol' : 'Mulai dari daftar akun'}</h3>
+            <div>${state.me ? 'Setelah kontak dipilih, pesan akan muncul di sini.' : 'Ikuti alur registrasi di panel kiri.'}</div>
+          </div>
+        `;
+        return;
+      }
+
+      el.chatTitle.textContent = selected.name;
+      el.chatSubtitle.textContent = `${selected.number} • chat pribadi`;
+      const chat = state.chats[selected.number] || [];
+
+      if (!chat.length) {
+        el.chatBody.innerHTML = `
+          <div class="empty card">
+            <h3 style="margin:0 0 8px">Chat kosong</h3>
+            <div>Kirim pesan pertama ke ${escapeHtml(selected.name)}.</div>
+          </div>
+        `;
+        return;
+      }
+
+      el.chatBody.innerHTML = chat.map(msg => `
+        <div class="bubble ${msg.fromMe ? 'me' : 'them'}">
+          ${escapeHtml(msg.body)}
+          <small>${formatTime(msg.createdAt)}</small>
+        </div>
+      `).join('');
+    }
+
+    function renderComposerState() {
+      const ready = !!(state.me && currentContact());
+      el.messageInput.disabled = !ready;
+      el.sendBtn.disabled = !ready || state.sending;
+
+      if (ready) {
+        el.messageInput.placeholder = 'Tulis pesan ke kontak ini...';
+      } else if (!state.me) {
+        el.messageInput.placeholder = 'Daftar dulu untuk chat';
+      } else {
+        el.messageInput.placeholder = 'Pilih kontak dulu';
+      }
+    }
+
+    function currentContact() {
+      return state.contacts.find(c => c.number === state.selectedNumber) || null;
+    }
+
+    function upsertContactLocally(contact) {
+      const idx = state.contacts.findIndex(c => c.number === contact.number);
+      if (idx >= 0) {
+        state.contacts[idx] = { ...state.contacts[idx], ...contact };
+      } else {
+        state.contacts.unshift(contact);
+      }
+      state.contacts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    }
+
+    function ensureContactFromMessage(number, name) {
+      if (!number) return;
+      const existing = state.contacts.find(c => c.number === number);
+      if (existing) {
+        if (name && existing.name !== name) existing.name = name;
+        return existing;
+      }
+      const contact = {
+        number,
+        name: name || `User ${number.slice(-4)}`,
+        lastMessage: '',
+        updatedAt: Date.now(),
+      };
+      state.contacts.unshift(contact);
+      return contact;
+    }
+
+    function touchContact(number, lastMessage, fallbackName) {
+      const contact = ensureContactFromMessage(number, fallbackName);
+      contact.lastMessage = lastMessage || contact.lastMessage || '';
+      contact.updatedAt = Date.now();
+      state.contacts.sort((a, b) => (b.updatedAt || 0) - (a.updatedAt || 0));
+    }
+
+    function appendMessage(number, message, { dedupe = false } = {}) {
+      if (!state.chats[number]) state.chats[number] = [];
+      if (dedupe && state.chats[number].some(m => m.id === message.id)) return;
+
+      const normalized = {
+        id: message.id,
+        senderNumber: message.senderNumber,
+        senderName: message.senderName,
+        receiverNumber: message.receiverNumber,
+        receiverName: message.receiverName,
+        body: message.body,
+        createdAt: message.createdAt,
+        deliveredAt: message.deliveredAt || null,
+        fromMe: message.fromMe ?? (state.me && message.senderNumber === state.me.number),
+      };
+
+      state.chats[number].push(normalized);
+    }
+
+    function formatTime(ms) {
+      if (!ms) return '';
+      return new Date(ms).toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit' });
+    }
+
+    function scrollChatBottom() {
+      requestAnimationFrame(() => {
+        el.chatBody.scrollTop = el.chatBody.scrollHeight;
+      });
+    }
+
+    function initials(name) {
+      return String(name || '?')
+        .split(/\s+/)
+        .slice(0, 2)
+        .map(x => x[0] || '')
+        .join('')
+        .toUpperCase() || '?';
+    }
+
+    function escapeHtml(str) {
+      return String(str)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+    }
+
+    function escapeAttr(str) {
+      return escapeHtml(str).replaceAll('`', '&#96;');
+    }
+  })();
+</script>
+</body>
+</html>
