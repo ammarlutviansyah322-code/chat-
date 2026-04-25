@@ -1,7 +1,9 @@
 require('dotenv').config();
+
 const path = require('path');
 const http = require('http');
 const crypto = require('crypto');
+
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
@@ -25,9 +27,11 @@ app.use(helmet({ contentSecurityPolicy: false }));
 app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.static(path.join(__dirname, 'src')));
 
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
+db.pragma('foreign_keys = ON');
 
 const transporter = createTransporter();
 const connectedUsers = new Map(); // userId -> socket.id
@@ -40,21 +44,37 @@ const sql = {
   findUserByEmail: db.prepare(`SELECT * FROM users WHERE email = ? LIMIT 1`),
   findUserByNumber: db.prepare(`SELECT * FROM users WHERE number = ? LIMIT 1`),
   findUserById: db.prepare(`SELECT * FROM users WHERE id = ? LIMIT 1`),
+
   createOtp: db.prepare(`INSERT INTO otps (email, code_hash, expires_at, created_at) VALUES (?, ?, ?, ?)`),
   latestOtpByEmail: db.prepare(`SELECT * FROM otps WHERE email = ? AND used_at IS NULL ORDER BY created_at DESC LIMIT 1`),
   markOtpUsed: db.prepare(`UPDATE otps SET used_at = ? WHERE id = ?`),
+
   createSession: db.prepare(`INSERT INTO sessions (token, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)`),
-  findSession: db.prepare(`SELECT sessions.*, users.id as user_id, users.email, users.name, users.number FROM sessions INNER JOIN users ON users.id = sessions.user_id WHERE sessions.token = ? AND sessions.expires_at > ? LIMIT 1`),
-  deleteSession: db.prepare(`DELETE FROM sessions WHERE token = ?`),
-  upsertContact: db.prepare(`
-    INSERT INTO contacts (owner_user_id, peer_number, peer_name, peer_user_id, last_message, updated_at, created_at)
-    VALUES (@owner_user_id, @peer_number, @peer_name, @peer_user_id, @last_message, @updated_at, @created_at)
-    ON CONFLICT(owner_user_id, peer_number) DO UPDATE SET
-      peer_name = excluded.peer_name,
-      peer_user_id = COALESCE(excluded.peer_user_id, contacts.peer_user_id),
-      last_message = excluded.last_message,
-      updated_at = excluded.updated_at
+  findSession: db.prepare(`
+    SELECT sessions.*, users.id as user_id, users.email, users.name, users.number
+    FROM sessions
+    INNER JOIN users ON users.id = sessions.user_id
+    WHERE sessions.token = ? AND sessions.expires_at > ?
+    LIMIT 1
   `),
+  deleteSession: db.prepare(`DELETE FROM sessions WHERE token = ?`),
+
+  insertContact: db.prepare(`
+    INSERT OR IGNORE INTO contacts
+      (owner_user_id, peer_number, peer_name, peer_user_id, last_message, updated_at, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `),
+  updateContactBasic: db.prepare(`
+    UPDATE contacts
+    SET peer_name = ?, last_message = ?, updated_at = ?
+    WHERE owner_user_id = ? AND peer_number = ?
+  `),
+  updateContactLinked: db.prepare(`
+    UPDATE contacts
+    SET peer_name = ?, peer_user_id = ?, last_message = ?, updated_at = ?
+    WHERE owner_user_id = ? AND peer_number = ?
+  `),
+  contactByOwnerAndNumber: db.prepare(`SELECT * FROM contacts WHERE owner_user_id = ? AND peer_number = ? LIMIT 1`),
   listContacts: db.prepare(`
     SELECT c.*, u.name AS linked_name, u.number AS linked_number
     FROM contacts c
@@ -62,8 +82,12 @@ const sql = {
     WHERE c.owner_user_id = ?
     ORDER BY c.updated_at DESC, c.id DESC
   `),
-  contactByOwnerAndNumber: db.prepare(`SELECT * FROM contacts WHERE owner_user_id = ? AND peer_number = ? LIMIT 1`),
-  updateContactsLinkByNumber: db.prepare(`UPDATE contacts SET peer_user_id = ?, peer_name = ?, updated_at = ? WHERE peer_number = ?`),
+  updateContactsLinkByNumber: db.prepare(`
+    UPDATE contacts
+    SET peer_user_id = ?, peer_name = ?, updated_at = ?
+    WHERE peer_number = ?
+  `),
+
   insertMessage: db.prepare(`
     INSERT INTO messages (
       sender_user_id, sender_number, sender_name,
@@ -90,14 +114,13 @@ const sql = {
     ORDER BY created_at ASC, id ASC
   `),
   markMessagesDeliveredToUser: db.prepare(`
-    UPDATE messages SET receiver_user_id = ?, delivered_at = ?
+    UPDATE messages
+    SET receiver_user_id = ?, delivered_at = ?
     WHERE receiver_number = ? AND receiver_user_id IS NULL
   `),
 };
 
-app.use(express.static(path.join(__dirname, 'src')));
 app.get('/', (_req, res) => res.sendFile(path.join(__dirname, 'src', 'index.html')));
-
 app.get('/health', (_req, res) => res.json({ ok: true, app: APP_NAME, time: new Date().toISOString() }));
 
 app.post('/api/auth/request-otp', async (req, res) => {
@@ -184,71 +207,94 @@ app.get('/api/me', authRequired, (req, res) => {
 
 app.get('/api/contacts', authRequired, (req, res) => {
   const rows = sql.listContacts.all(req.user.id);
-  const contacts = rows.map(row => ({
-    id: row.id,
-    number: row.peer_number,
-    name: row.linked_name || row.peer_name,
-    lastMessage: row.last_message || '',
-    updatedAt: row.updated_at,
-    linkedUserId: row.peer_user_id || null,
-  }));
+  const contacts = rows.map(row => mapContactRow(row));
   return res.json({ ok: true, contacts });
 });
 
 app.post('/api/contacts/add', authRequired, (req, res) => {
-  const number = normalizeNumber(req.body?.number);
-  if (!isValidNumber(number)) return res.status(400).json({ error: 'Nomor tidak valid.' });
-  if (number === req.user.number) return res.status(400).json({ error: 'Itu nomor kamu sendiri.' });
+  try {
+    const number = normalizeNumber(req.body?.number);
+    if (!isValidNumber(number)) return res.status(400).json({ error: 'Nomor tidak valid.' });
+    if (number === req.user.number) return res.status(400).json({ error: 'Itu nomor kamu sendiri.' });
 
-  const existingPeer = sql.findUserByNumber.get(number);
-  const contact = upsertContact(req.user, number, existingPeer?.name || `User ${number.slice(-4)}`, existingPeer?.id || null, '');
-  return res.json({ ok: true, contact });
+    const existingPeer = sql.findUserByNumber.get(number);
+
+    const contact = upsertContact(
+      req.user,
+      number,
+      existingPeer?.name || `User ${number.slice(-4)}`,
+      existingPeer?.id || null,
+      ''
+    );
+
+    return res.json({ ok: true, contact: mapContactRow(contact) });
+  } catch (err) {
+    console.error('add-contact failed:', err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
 });
 
 app.get('/api/chats/:number', authRequired, (req, res) => {
-  const peerNumber = normalizeNumber(req.params.number);
-  if (!isValidNumber(peerNumber)) return res.status(400).json({ error: 'Nomor tidak valid.' });
+  try {
+    const peerNumber = normalizeNumber(req.params.number);
+    if (!isValidNumber(peerNumber)) return res.status(400).json({ error: 'Nomor tidak valid.' });
 
-  const rows = sql.messagesConversation.all(req.user.id, peerNumber, peerNumber, req.user.id);
-  return res.json({
-    ok: true,
-    peerNumber,
-    messages: rows.map(r => serializeMessage(r, req.user.number)),
-  });
+    const rows = sql.messagesConversation.all(req.user.id, peerNumber, peerNumber, req.user.id);
+    return res.json({
+      ok: true,
+      peerNumber,
+      messages: rows.map(r => serializeMessage(r, req.user.number)),
+    });
+  } catch (err) {
+    console.error('get-chat failed:', err);
+    return res.status(500).json({ error: 'Server error.' });
+  }
 });
 
 app.post('/api/chats/send', authRequired, (req, res) => {
-  const toNumber = normalizeNumber(req.body?.toNumber);
-  const body = String(req.body?.message || '').trim();
-  if (!isValidNumber(toNumber)) return res.status(400).json({ error: 'Nomor tujuan tidak valid.' });
-  if (!body) return res.status(400).json({ error: 'Pesan tidak boleh kosong.' });
+  try {
+    const toNumber = normalizeNumber(req.body?.toNumber);
+    const body = String(req.body?.message || '').trim();
 
-  const recipient = sql.findUserByNumber.get(toNumber);
-  const now = Date.now();
-  const message = {
-    sender_user_id: req.user.id,
-    sender_number: req.user.number,
-    sender_name: req.user.name,
-    receiver_user_id: recipient?.id || null,
-    receiver_number: toNumber,
-    receiver_name: recipient?.name || `User ${toNumber.slice(-4)}`,
-    body,
-    created_at: now,
-    delivered_at: recipient ? now : null,
-  };
+    if (!isValidNumber(toNumber)) return res.status(400).json({ error: 'Nomor tujuan tidak valid.' });
+    if (!body) return res.status(400).json({ error: 'Pesan tidak boleh kosong.' });
 
-  const info = sql.insertMessage.run(message);
-  const stored = sql.messagesConversation.all(req.user.id, toNumber, toNumber, req.user.id).slice(-1)[0];
+    const recipient = sql.findUserByNumber.get(toNumber);
+    const now = Date.now();
 
-  upsertContact(req.user, toNumber, message.receiver_name, recipient?.id || null, body);
-  if (recipient) {
-    upsertContact(recipient, req.user.number, req.user.name, req.user.id, body);
+    const message = {
+      sender_user_id: req.user.id,
+      sender_number: req.user.number,
+      sender_name: req.user.name,
+      receiver_user_id: recipient?.id || null,
+      receiver_number: toNumber,
+      receiver_name: recipient?.name || `User ${toNumber.slice(-4)}`,
+      body,
+      created_at: now,
+      delivered_at: recipient ? now : null,
+    };
+
+    const info = sql.insertMessage.run(message);
+    const stored = sql.messagesConversation
+      .all(req.user.id, toNumber, toNumber, req.user.id)
+      .slice(-1)[0];
+
+    upsertContact(req.user, toNumber, message.receiver_name, recipient?.id || null, body);
+    if (recipient) {
+      upsertContact(recipient, req.user.number, req.user.name, req.user.id, body);
+    }
+
+    const payload = serializeMessage(
+      stored || { ...message, id: info.lastInsertRowid },
+      req.user.number
+    );
+
+    emitMessageToUsers(payload, req.user.number, toNumber);
+    return res.json({ ok: true, message: payload });
+  } catch (err) {
+    console.error('send-message failed:', err);
+    return res.status(500).json({ error: 'Server error.' });
   }
-
-  const payload = serializeMessage(stored || { ...message, id: info.lastInsertRowid }, req.user.number);
-  emitMessageToUsers(payload, req.user.number, toNumber);
-
-  return res.json({ ok: true, message: payload });
 });
 
 app.get('/api/dev/status', (_req, res) => {
@@ -266,9 +312,13 @@ app.use((err, _req, res, _next) => {
 
 io.use((socket, next) => {
   try {
-    const token = socket.handshake.auth?.token || socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
+    const token =
+      socket.handshake.auth?.token ||
+      socket.handshake.headers?.authorization?.replace(/^Bearer\s+/i, '');
+
     const session = token ? sql.findSession.get(token, Date.now()) : null;
     if (!session) return next(new Error('Unauthorized'));
+
     socket.user = {
       id: session.user_id,
       email: session.email,
@@ -286,10 +336,16 @@ io.on('connection', (socket) => {
   const room = userRoom(socket.user.number);
   connectedUsers.set(socket.user.id, socket.id);
   socket.join(room);
-  socket.emit('connected', { ok: true, user: publicUser(socket.user) });
+
+  socket.emit('connected', {
+    ok: true,
+    user: publicUser(socket.user),
+  });
 
   socket.on('disconnect', () => {
-    if (connectedUsers.get(socket.user.id) === socket.id) connectedUsers.delete(socket.user.id);
+    if (connectedUsers.get(socket.user.id) === socket.id) {
+      connectedUsers.delete(socket.user.id);
+    }
   });
 });
 
@@ -366,6 +422,7 @@ function createTransporter() {
   const user = process.env.GMAIL_USER;
   const pass = process.env.GMAIL_APP_PASSWORD;
   if (!user || !pass) return null;
+
   return nodemailer.createTransport({
     service: 'gmail',
     auth: { user, pass },
@@ -377,18 +434,27 @@ async function sendOtpEmail(email, code, expiresAt) {
     console.log(`[OTP DEMO] ${email} -> ${code} (expires ${new Date(expiresAt).toISOString()})`);
     return;
   }
+
   await transporter.sendMail({
     from: `"${APP_NAME}" <${process.env.GMAIL_USER}>`,
     to: email,
     subject: `${APP_NAME} OTP`,
-    text: `Kode OTP kamu: ${code}. Berlaku sampai ${new Date(expiresAt).toLocaleString('id-ID')}`,
-    html: `<p>Kode OTP kamu: <b style="font-size:20px">${code}</b></p><p>Berlaku sampai: ${new Date(expiresAt).toLocaleString('id-ID')}</p>`,
+    text: `Kode OTP kamu: ${code}\nBerlaku sampai ${new Date(expiresAt).toLocaleString('id-ID')}`,
+    html: `
+      <div style="font-family:Arial,sans-serif;line-height:1.6">
+        <h2 style="margin:0 0 12px">${APP_NAME}</h2>
+        <p>Kode OTP kamu:</p>
+        <div style="font-size:28px;font-weight:700;letter-spacing:4px">${code}</div>
+        <p>Berlaku sampai: ${new Date(expiresAt).toLocaleString('id-ID')}</p>
+      </div>
+    `,
   });
 }
 
 function authOptional(req, _res, next) {
   const token = getTokenFromReq(req);
   if (!token) return next();
+
   const session = sql.findSession.get(token, Date.now());
   if (session) req.user = publicUser(session);
   return next();
@@ -397,8 +463,10 @@ function authOptional(req, _res, next) {
 function authRequired(req, res, next) {
   const token = getTokenFromReq(req);
   if (!token) return res.status(401).json({ error: 'Unauthorized' });
+
   const session = sql.findSession.get(token, Date.now());
   if (!session) return res.status(401).json({ error: 'Sesi tidak valid.' });
+
   req.user = publicUser(session);
   req.token = token;
   next();
@@ -419,17 +487,48 @@ function publicUser(user) {
   };
 }
 
+function mapContactRow(row) {
+  return {
+    id: row.id,
+    number: row.peer_number,
+    name: row.linked_name || row.peer_name,
+    lastMessage: row.last_message || '',
+    updatedAt: row.updated_at,
+    linkedUserId: row.peer_user_id || null,
+  };
+}
+
 function upsertContact(ownerUser, peerNumber, peerName, peerUserId, lastMessage) {
   const now = Date.now();
-  sql.upsertContact.run({
-    owner_user_id: ownerUser.id,
-    peer_number: peerNumber,
-    peer_name: peerName,
-    peer_user_id: peerUserId,
-    last_message: lastMessage || '',
-    updated_at: now,
-    created_at: now,
-  });
+  sql.insertContact.run(
+    ownerUser.id,
+    peerNumber,
+    peerName,
+    peerUserId ?? null,
+    lastMessage || '',
+    now,
+    now
+  );
+
+  if (peerUserId !== null && peerUserId !== undefined) {
+    sql.updateContactLinked.run(
+      peerName,
+      peerUserId,
+      lastMessage || '',
+      now,
+      ownerUser.id,
+      peerNumber
+    );
+  } else {
+    sql.updateContactBasic.run(
+      peerName,
+      lastMessage || '',
+      now,
+      ownerUser.id,
+      peerNumber
+    );
+  }
+
   return sql.contactByOwnerAndNumber.get(ownerUser.id, peerNumber);
 }
 
@@ -441,11 +540,15 @@ function linkContactsForUser(user) {
 function deliverPendingMessagesToUser(user) {
   const now = Date.now();
   sql.markMessagesDeliveredToUser.run(user.id, now, user.number);
+
   const pending = sql.pendingIncomingForNumber.all(user.number);
   for (const row of pending) {
     upsertContact(user, row.sender_number, row.sender_name, row.sender_user_id || null, row.body);
-    const senderUser = sql.findUserById.get(row.sender_user_id);
-    if (senderUser) upsertContact(senderUser, user.number, user.name, user.id, row.body);
+
+    const senderUser = row.sender_user_id ? sql.findUserById.get(row.sender_user_id) : null;
+    if (senderUser) {
+      upsertContact(senderUser, user.number, user.name, user.id, row.body);
+    }
   }
 }
 
@@ -477,7 +580,7 @@ function normalizeEmail(value) {
 }
 
 function normalizeNumber(value) {
-  return String(value || '').trim().replace(/\s+/g, '');
+  return String(value || '').replace(/\D/g, '').trim();
 }
 
 function isValidEmail(email) {
@@ -493,24 +596,24 @@ function generateOtp() {
 }
 
 function generateUniqueNumber() {
-  for (let i = 0; i < 100; i++) {
+  for (let i = 0; i < 100; i += 1) {
     const number = String(Math.floor(1000000 + Math.random() * 9000000));
     if (!sql.findUserByNumber.get(number)) return number;
   }
-  throw new Error('Gagal generate nomor unik');
+  throw new Error('Gagal membuat nomor unik.');
 }
 
 function createToken() {
   return crypto.randomBytes(32).toString('hex');
 }
 
-function hashOtp(email, otp) {
-  return crypto.createHash('sha256').update(`${email}:${otp}`).digest('hex');
+function hashOtp(email, code) {
+  return crypto.createHash('sha256').update(`${email}:${code}`).digest('hex');
 }
 
 function timingSafeEqual(a, b) {
-  const ba = Buffer.from(String(a));
-  const bb = Buffer.from(String(b));
-  if (ba.length !== bb.length) return false;
-  return crypto.timingSafeEqual(ba, bb);
+  const bufA = Buffer.from(String(a || ''), 'hex');
+  const bufB = Buffer.from(String(b || ''), 'hex');
+  if (bufA.length !== bufB.length) return false;
+  return crypto.timingSafeEqual(bufA, bufB);
 }
