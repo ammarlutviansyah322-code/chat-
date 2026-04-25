@@ -536,7 +536,7 @@ button, input, select {
     }
 
     async function hydrateSession() {
-      state.me = await api('/api/me');
+      state.me = (await api('/api/me')).user;
       await loadContacts();
       connectSocket();
     }
